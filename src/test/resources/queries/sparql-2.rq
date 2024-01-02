@@ -1,0 +1,6 @@
+# Query the graph store for all quads with a given subject
+SELECT ?graph ?predicate ?object WHERE {
+    GRAPH ?graph {
+      <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Datasets/GratteCiel_Workspace_2009_2018/3.0/GratteCiel#VILLEURBANNE_00067_5> ?predicate ?object .
+    }
+}

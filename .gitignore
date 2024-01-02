@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Dataset ###
+**/dataset
+
+### venv ###
+**/venv

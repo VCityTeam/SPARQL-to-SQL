@@ -1,0 +1,4 @@
+# Query the workspace (default graph) for all triples
+SELECT ?subject ?predicate ?object WHERE {
+      ?subject ?predicate ?object .
+}

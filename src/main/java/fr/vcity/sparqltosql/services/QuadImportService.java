@@ -1,9 +1,9 @@
 package fr.vcity.sparqltosql.services;
 
-import fr.vcity.sparqltosql.dao.RDFNamedGraph;
 import fr.vcity.sparqltosql.dao.RDFResourceOrLiteral;
-import fr.vcity.sparqltosql.exceptions.FileException;
-import fr.vcity.sparqltosql.model.RDFSavedQuad;
+import fr.vcity.sparqltosql.dao.RDFVersionedNamedGraph;
+import fr.vcity.sparqltosql.dao.Version;
+import fr.vcity.sparqltosql.model.RDFSavedTriple;
 import fr.vcity.sparqltosql.repository.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
@@ -11,14 +11,15 @@ import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.riot.RDFLanguages;
 import org.apache.jena.riot.RDFParser;
+import org.apache.jena.riot.RiotException;
 import org.apache.jena.riot.system.ErrorHandlerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.time.LocalDateTime;
+import java.util.Iterator;
 
 @Service
 @Slf4j
@@ -26,199 +27,95 @@ public class QuadImportService implements IQuadImportService {
 
     IRDFResourceOrLiteralRepository rdfResourceRepository;
     IRDFVersionedQuadRepository rdfVersionedQuadRepository;
-    IRDFNamedGraphRepository rdfNamedGraphRepository;
-    IRDFCommitRepository rdfCommitRepository;
+    IVersionedWorkspaceRepository versionedWorkspaceRepository;
+    IRDFVersionedNamedGraphRepository rdfVersionedNamedGraphRepository;
+    RDFVersionedNamedGraphComponent rdfVersionedNamedGraphComponent;
+    WorkspaceComponent workspaceComponent;
+    IVersionRepository versionRepository;
     RDFVersionedQuadComponent rdfVersionedQuadComponent;
 
     public QuadImportService(
             IRDFResourceOrLiteralRepository rdfResourceRepository,
             IRDFVersionedQuadRepository rdfVersionedQuadRepository,
-            IRDFNamedGraphRepository rdfNamedGraphRepository,
-            IRDFCommitRepository rdfCommitRepository,
+            IVersionedWorkspaceRepository versionedWorkspaceRepository,
+            IRDFVersionedNamedGraphRepository rdfVersionedNamedGraphRepository,
+            RDFVersionedNamedGraphComponent rdfVersionedNamedGraphComponent,
+            WorkspaceComponent workspaceComponent,
+            IVersionRepository versionRepository,
             RDFVersionedQuadComponent rdfVersionedQuadComponent
     ) {
         this.rdfResourceRepository = rdfResourceRepository;
         this.rdfVersionedQuadRepository = rdfVersionedQuadRepository;
-        this.rdfNamedGraphRepository = rdfNamedGraphRepository;
+        this.versionedWorkspaceRepository = versionedWorkspaceRepository;
+        this.rdfVersionedNamedGraphRepository = rdfVersionedNamedGraphRepository;
+        this.rdfVersionedNamedGraphComponent = rdfVersionedNamedGraphComponent;
+        this.workspaceComponent = workspaceComponent;
         this.rdfVersionedQuadComponent = rdfVersionedQuadComponent;
-        this.rdfCommitRepository = rdfCommitRepository;
+        this.versionRepository = versionRepository;
     }
 
     /**
-     * Import RDF statements represented in language <code>lang</code> to the model as valid in the new version.
-     * <br />Predefined values for <code>lang</code> are "TRIG" and "NQUADS"
+     * Import RDF statements represented in language <code>of the file extension</code> to the model as valid in the new version.
      *
-     * @param files The input files
+     * @param file The input file
      */
     @Override
-    public void importModelToAdd(List<MultipartFile> files) {
-        Integer maxLength = rdfVersionedQuadRepository.getMaxValidity();
-        List<MultipartFile> fileList = files
-                .stream()
-                .filter(file -> !file.isEmpty())
-                .collect(Collectors.toList());
-        rdfCommitRepository.save(summarizeImport(fileList, "add"));
+    public Integer importModel(MultipartFile file) throws RiotException {
+        LocalDateTime startTransactionTime = LocalDateTime.now();
+        Version version = versionRepository.save(file.getOriginalFilename(), startTransactionTime);
 
-        fileList.forEach(file -> {
-            log.info("Current file: {}", file.getOriginalFilename());
+        log.info("Current file: {}", file.getOriginalFilename());
 
-            try (InputStream inputStream = file.getInputStream()) {
-                Dataset dataset =
-                        RDFParser.create()
-                                .source(inputStream)
-                                .lang(RDFLanguages.nameToLang(FilenameUtils.getExtension(file.getOriginalFilename())))
-                                .errorHandler(ErrorHandlerFactory.errorHandlerStrict)
-                                .toDataset();
+        try (InputStream inputStream = file.getInputStream()) {
+            Dataset dataset =
+                    RDFParser.create()
+                            .source(inputStream)
+                            .lang(RDFLanguages.nameToLang(FilenameUtils.getExtension(file.getOriginalFilename())))
+                            .errorHandler(ErrorHandlerFactory.errorHandlerStrict)
+                            .toDataset();
 
-                importDefaultModel(dataset.getDefaultModel(), "add", maxLength);
+            Long start = System.nanoTime();
 
-                for (Iterator<Resource> i = dataset.listModelNames(); i.hasNext(); ) {
-                    Resource namedModel = i.next();
-                    Model model = dataset.getNamedModel(namedModel);
-                    log.debug("Name Graph : {}", namedModel.getURI());
+            for (Iterator<Resource> i = dataset.listModelNames(); i.hasNext(); ) {
+                Resource namedModel = i.next();
+                Model model = dataset.getNamedModel(namedModel);
+                log.info("Name Graph : {}", namedModel.getURI());
+                RDFResourceOrLiteral rdfResourceOrLiteralNG = saveRDFResourceOrLiteralOrReturnExisting(namedModel, "Named Graph");
+                RDFResourceOrLiteral rdfResourceOrLiteralVNG = saveRDFResourceOrLiteralOrReturnExisting(
+                        model.createResource(generateVersionedNamedGraph(namedModel.getURI(), version.getIndexVersion() - 1)),
+                        "Named Graph"
+                );
+                saveRDFNamedGraphOrReturnExisting(
+                        rdfResourceOrLiteralVNG.getIdResourceOrLiteral(),
+                        version.getIndexVersion() - 1,
+                        rdfResourceOrLiteralNG.getIdResourceOrLiteral()
+                );
 
-                    for (StmtIterator s = model.listStatements(); s.hasNext(); ) {
-                        RDFSavedQuad rdfSavedQuad = getRDFSavedQuad(s.nextStatement(), namedModel.getURI());
+                model.listStatements().toList().parallelStream().forEach(statement -> {
+                    RDFSavedTriple rdfSavedTriple = saveRDFTripleOrReturnExisting(statement);
 
-                        rdfVersionedQuadComponent.saveAdd(
-                                rdfSavedQuad.getSavedRDFSubject().getIdResourceOrLiteral(),
-                                rdfSavedQuad.getSavedRDFPredicate().getIdResourceOrLiteral(),
-                                rdfSavedQuad.getSavedRDFObject().getIdResourceOrLiteral(),
-                                rdfSavedQuad.getSavedRDFNamedGraph().getIdNamedGraph(),
-                                maxLength == null ? 0 : maxLength + 1
-                        );
-                    }
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+                    rdfVersionedQuadComponent.save(
+                            rdfSavedTriple.getSavedRDFSubject().getIdResourceOrLiteral(),
+                            rdfSavedTriple.getSavedRDFPredicate().getIdResourceOrLiteral(),
+                            rdfSavedTriple.getSavedRDFObject().getIdResourceOrLiteral(),
+                            rdfResourceOrLiteralNG.getIdResourceOrLiteral(),
+                            version.getIndexVersion() - 1
+                    );
+                });
             }
-        });
+
+            Long end = System.nanoTime();
+            log.info("Time of execution: {} ns for file: {}", end - start, file.getOriginalFilename());
+        } catch (RiotException | IOException e) {
+            versionRepository.delete(version);
+            throw new RiotException(e.getMessage());
+        }
 
         rdfVersionedQuadRepository.updateValidityVersionedQuad();
-    }
+        LocalDateTime endTransactionTime = LocalDateTime.now();
 
-    /**
-     * Import RDF statements represented in language <code>lang</code> to the model as not valid in the new version.
-     * <br />Predefined values for <code>lang</code> are "TRIG" and "NQUADS"
-     *
-     * @param files The input files
-     */
-    @Override
-    public void importModelToRemove(List<MultipartFile> files) {
-        Integer maxLength = rdfVersionedQuadRepository.getMaxValidity();
-        List<MultipartFile> fileList = files
-                .stream()
-                .filter(file -> !file.isEmpty())
-                .collect(Collectors.toList());
-        rdfCommitRepository.save(summarizeImport(fileList, "remove"));
-
-        fileList.forEach(file -> {
-            log.info("Current file: {}", file.getOriginalFilename());
-
-            try (InputStream inputStream = file.getInputStream()) {
-                Dataset dataset =
-                        RDFParser.create()
-                                .source(inputStream)
-                                .lang(RDFLanguages.nameToLang(FilenameUtils.getExtension(file.getOriginalFilename())))
-                                .errorHandler(ErrorHandlerFactory.errorHandlerStrict)
-                                .toDataset();
-
-                importDefaultModel(dataset.getDefaultModel(), "remove", maxLength);
-
-                for (Iterator<Resource> i = dataset.listModelNames(); i.hasNext(); ) {
-                    Resource namedModel = i.next();
-                    Model model = dataset.getNamedModel(namedModel);
-                    log.debug("Name Graph : {}", namedModel.getURI());
-
-                    for (StmtIterator s = model.listStatements(); s.hasNext(); ) {
-                        RDFSavedQuad rdfSavedQuad = getRDFSavedQuad(s.nextStatement(), namedModel.getURI());
-
-                        rdfVersionedQuadComponent.saveRemove(
-                                rdfSavedQuad.getSavedRDFSubject().getIdResourceOrLiteral(),
-                                rdfSavedQuad.getSavedRDFPredicate().getIdResourceOrLiteral(),
-                                rdfSavedQuad.getSavedRDFObject().getIdResourceOrLiteral(),
-                                rdfSavedQuad.getSavedRDFNamedGraph().getIdNamedGraph(),
-                                maxLength == null ? 0 : maxLength + 1
-                        );
-                    }
-                }
-
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-
-        rdfVersionedQuadRepository.updateValidityVersionedQuad();
-    }
-
-    /**
-     * Import RDF statements inside the <code>files</code>
-     *
-     * @param files The input files
-     */
-    @Override
-    public void importModelToRemoveAndAdd(List<MultipartFile> files) {
-        Integer maxLength = rdfVersionedQuadRepository.getMaxValidity();
-        List<MultipartFile> fileList = files
-                .stream()
-                .filter(file -> !file.isEmpty())
-                .sorted(getRemoveAddFileComparator())
-                .collect(Collectors.toList());
-        rdfCommitRepository.save(summarizeImport(fileList, "remove-add"));
-
-        fileList.forEach(file -> {
-            log.info("Current file: {}", file.getOriginalFilename());
-
-            try (InputStream inputStream = file.getInputStream()) {
-                Dataset dataset =
-                        RDFParser.create()
-                                .source(inputStream)
-                                .lang(RDFLanguages.nameToLang(FilenameUtils.getExtension(file.getOriginalFilename())))
-                                .errorHandler(ErrorHandlerFactory.errorHandlerStrict)
-                                .toDataset();
-
-                if (file.getOriginalFilename().contains("add")) {
-                    importDefaultModel(dataset.getDefaultModel(), "add", maxLength);
-                } else if (file.getOriginalFilename().contains("remove")) {
-                    importDefaultModel(dataset.getDefaultModel(), "remove", maxLength);
-                } else {
-                    throw new FileException("The file: " + file.getOriginalFilename() + " doesn't contain 'add' or 'remove'");
-                }
-
-                for (Iterator<Resource> i = dataset.listModelNames(); i.hasNext(); ) {
-                    Resource namedModel = i.next();
-                    Model model = dataset.getNamedModel(namedModel);
-                    log.debug("Name Graph : {}", namedModel.getURI());
-
-                    for (StmtIterator s = model.listStatements(); s.hasNext(); ) {
-                        RDFSavedQuad rdfSavedQuad = getRDFSavedQuad(s.nextStatement(), namedModel.getURI());
-
-                        if (file.getOriginalFilename().contains("add")) {
-                            rdfVersionedQuadComponent.saveAdd(
-                                    rdfSavedQuad.getSavedRDFSubject().getIdResourceOrLiteral(),
-                                    rdfSavedQuad.getSavedRDFPredicate().getIdResourceOrLiteral(),
-                                    rdfSavedQuad.getSavedRDFObject().getIdResourceOrLiteral(),
-                                    rdfSavedQuad.getSavedRDFNamedGraph().getIdNamedGraph(),
-                                    maxLength == null ? 0 : maxLength + 1
-                            );
-                        } else {
-                            rdfVersionedQuadComponent.saveRemove(
-                                    rdfSavedQuad.getSavedRDFSubject().getIdResourceOrLiteral(),
-                                    rdfSavedQuad.getSavedRDFPredicate().getIdResourceOrLiteral(),
-                                    rdfSavedQuad.getSavedRDFObject().getIdResourceOrLiteral(),
-                                    rdfSavedQuad.getSavedRDFNamedGraph().getIdNamedGraph(),
-                                    maxLength == null ? 0 : maxLength + 1
-                            );
-                        }
-                    }
-                }
-            } catch (IOException e) {
-                throw new FileException("Failed to store file.", e);
-            }
-        });
-
-        rdfVersionedQuadRepository.updateValidityVersionedQuad();
+        versionRepository.insertEndTransactionTime(version.getIndexVersion(), endTransactionTime);
+        return version.getIndexVersion();
     }
 
     /**
@@ -228,99 +125,115 @@ public class QuadImportService implements IQuadImportService {
     public void resetDatabase() {
         rdfVersionedQuadRepository.deleteAll();
         rdfResourceRepository.deleteAll();
-        rdfNamedGraphRepository.deleteAll();
-        rdfCommitRepository.deleteAll();
+        rdfVersionedNamedGraphRepository.deleteAll();
+        versionRepository.deleteAll();
+        versionedWorkspaceRepository.deleteAll();
     }
 
     /**
-     * Summarize the new version
+     * Import RDF statements represented in language <code>of the file extension</code> to the model as valid in the new workspace.
      *
-     * @param fileList   The non empty files
-     * @param actionType the action type
-     * @return The computed summary of the import
+     * @param file The input file
      */
-    private String summarizeImport(List<MultipartFile> fileList, String actionType) {
-        return String.format("%s: [%s]", actionType, fileList
-                .stream()
-                .map(multipartFile -> "(" + multipartFile.getOriginalFilename() + ")")
-                .collect(Collectors.joining(",")));
+    @Override
+    public void importWorkspace(MultipartFile file) throws RiotException {
+
+        log.info("Current file: {}", file.getOriginalFilename());
+
+        try (InputStream inputStream = file.getInputStream()) {
+            Dataset dataset =
+                    RDFParser.create()
+                            .source(inputStream)
+                            .lang(RDFLanguages.nameToLang(FilenameUtils.getExtension(file.getOriginalFilename())))
+                            .errorHandler(ErrorHandlerFactory.errorHandlerStrict)
+                            .toDataset();
+
+            Long start = System.nanoTime();
+
+            if (!dataset.getDefaultModel().listStatements().toList().isEmpty()) {
+                importDefaultModel(dataset.getDefaultModel());
+            }
+
+            for (Iterator<Resource> i = dataset.listModelNames(); i.hasNext(); ) {
+                Resource namedModel = i.next();
+                Model model = dataset.getNamedModel(namedModel);
+                model.listStatements().toList().parallelStream().forEach(statement -> {
+                    RDFSavedTriple rdfSavedTriple = saveRDFTripleOrReturnExisting(statement);
+
+                    workspaceComponent.save(
+                            rdfSavedTriple.getSavedRDFSubject().getIdResourceOrLiteral(),
+                            rdfSavedTriple.getSavedRDFPredicate().getIdResourceOrLiteral(),
+                            rdfSavedTriple.getSavedRDFObject().getIdResourceOrLiteral()
+                    );
+                });
+            }
+
+            Long end = System.nanoTime();
+            log.info("Time of execution: {} ns for file: {}", end - start, file.getOriginalFilename());
+        } catch (RiotException | IOException e) {
+            throw new RiotException(e.getMessage());
+        }
+    }
+
+    /**
+     * Reset the workspace.
+     */
+    public void removeWorkspace() {
+        versionedWorkspaceRepository.deleteAll();
     }
 
     /**
      * Import RDF default model statements
      *
      * @param defaultModel The default graph
-     * @param action       The action (add or remove)
-     * @param maxLength    The size of the bit string
      */
-    private void importDefaultModel(Model defaultModel, String action, Integer maxLength) {
-        for (StmtIterator s = defaultModel.listStatements(); s.hasNext(); ) {
-            RDFSavedQuad rdfSavedQuad = getRDFSavedQuad(s.nextStatement(), "default");
+    private void importDefaultModel(Model defaultModel) {
+        defaultModel.listStatements().toList().parallelStream().forEach(statement -> {
+            RDFSavedTriple rdfSavedTriple = saveRDFTripleOrReturnExisting(statement);
 
-            if (action.equals("remove")) {
-                rdfVersionedQuadComponent.saveRemove(
-                        rdfSavedQuad.getSavedRDFSubject().getIdResourceOrLiteral(),
-                        rdfSavedQuad.getSavedRDFPredicate().getIdResourceOrLiteral(),
-                        rdfSavedQuad.getSavedRDFObject().getIdResourceOrLiteral(),
-                        rdfSavedQuad.getSavedRDFNamedGraph().getIdNamedGraph(),
-                        maxLength == null ? 0 : maxLength + 1
-                );
-            } else {
-                rdfVersionedQuadComponent.saveAdd(
-                        rdfSavedQuad.getSavedRDFSubject().getIdResourceOrLiteral(),
-                        rdfSavedQuad.getSavedRDFPredicate().getIdResourceOrLiteral(),
-                        rdfSavedQuad.getSavedRDFObject().getIdResourceOrLiteral(),
-                        rdfSavedQuad.getSavedRDFNamedGraph().getIdNamedGraph(),
-                        maxLength == null ? 0 : maxLength + 1
-                );
-            }
-        }
+            workspaceComponent.save(
+                    rdfSavedTriple.getSavedRDFSubject().getIdResourceOrLiteral(),
+                    rdfSavedTriple.getSavedRDFPredicate().getIdResourceOrLiteral(),
+                    rdfSavedTriple.getSavedRDFObject().getIdResourceOrLiteral()
+            );
+        });
     }
 
     /**
      * Saves the subject, the property, the object and the named graph inside the database if they exist else returning them
      *
-     * @param statement  The statement
-     * @param namedModel The named model
+     * @param statement The statement
      * @return The saved or existing Quad
      */
-    private RDFSavedQuad getRDFSavedQuad(Statement statement, String namedModel) {
+    private RDFSavedTriple saveRDFTripleOrReturnExisting(Statement statement) {
         RDFNode subject = statement.getSubject();
         RDFNode predicate = statement.getPredicate();
         RDFNode object = statement.getObject();
 
-        RDFNamedGraph savedRDFNamedGraph = saveRDFNamedGraphOrReturnExisting(namedModel);
         RDFResourceOrLiteral savedRDFSubject = saveRDFResourceOrLiteralOrReturnExisting(subject, "Subject");
         RDFResourceOrLiteral savedRDFPredicate = saveRDFResourceOrLiteralOrReturnExisting(predicate, "Predicate");
         RDFResourceOrLiteral savedRDFObject = saveRDFResourceOrLiteralOrReturnExisting(object, "Object");
 
-        log.debug("Insert or updated quad (NG: {}, S: {}, P: {}, O: {})",
-                namedModel,
+        log.debug("Insert or updated (S: {}, P: {}, O: {})",
                 savedRDFSubject.getName(),
                 savedRDFPredicate.getName(),
                 savedRDFObject.getName()
         );
 
-        return new RDFSavedQuad(savedRDFNamedGraph, savedRDFSubject, savedRDFPredicate, savedRDFObject);
+        return new RDFSavedTriple(savedRDFSubject, savedRDFPredicate, savedRDFObject);
     }
 
     /**
      * Saves and return the RDF Named Graph inside the database if it doesn't exist, else returns the existing one.
      *
-     * @param uri The RDF named graph URI
+     * @param idVersionedNamedGraph The RDF versioned named graph id
+     * @param index                 The number of the associated version
+     * @param idNamedGraph          The RDF named graph URI id
      * @return The saved or existing RDFNamedGraph element
      */
-    private RDFNamedGraph saveRDFNamedGraphOrReturnExisting(String uri) {
-        Optional<RDFNamedGraph> optionalRDFNamedGraph = rdfNamedGraphRepository.findByName(uri);
-
-        if (optionalRDFNamedGraph.isPresent()) {
-            log.debug("Found named graph: {}", uri);
-
-            return optionalRDFNamedGraph.get();
-        }
-
-        log.debug("Insert named graph: {}", uri);
-        return rdfNamedGraphRepository.save(uri);
+    private RDFVersionedNamedGraph saveRDFNamedGraphOrReturnExisting(Integer idVersionedNamedGraph, Integer index, Integer idNamedGraph) {
+        log.info("Upsert named graph: {} in version {}. versionedId : {}", idNamedGraph, index, idVersionedNamedGraph);
+        return rdfVersionedNamedGraphComponent.save(idVersionedNamedGraph, index, idNamedGraph);
     }
 
     /**
@@ -335,53 +248,23 @@ public class QuadImportService implements IQuadImportService {
             Literal literal = spo.asLiteral();
             String literalValue = literal.getString();
 
-            Optional<RDFResourceOrLiteral> optionalRDFResourceOrLiteral =
-                    rdfResourceRepository.findByNameAndType(literalValue, literal.getDatatype().toString());
-
-            if (optionalRDFResourceOrLiteral.isPresent()) {
-                log.debug("Found {} literal: {}", type, literalValue);
-
-                return optionalRDFResourceOrLiteral.get();
-            }
-
-            log.debug("Insert {} resource: {}", type, literalValue);
-            return rdfResourceRepository.save(literalValue, spo.asLiteral().getDatatype().toString());
+            log.debug("Upsert returning {} literal: {}", type, literalValue);
+            return rdfResourceRepository.save(literalValue, spo.asLiteral().getDatatype().getURI());
         } else {
 
-            // Get element if exists or save new
-            Optional<RDFResourceOrLiteral> optionalRDFResourceOrLiteral =
-                    rdfResourceRepository.findByNameAndType(spo.toString(), null);
-
-            if (optionalRDFResourceOrLiteral.isPresent()) {
-                log.debug("Found {} resource: {}", type, spo);
-
-                return optionalRDFResourceOrLiteral.get();
-            }
-
-            log.debug("Insert {} resource: {}", type, spo);
+            log.debug("Upsert {} resource: {}", type, spo);
             return rdfResourceRepository.save(spo.toString(), null);
         }
     }
 
     /**
-     * Compares two multipartfile (sorting "remove" first and "add" then)
+     * Generates the versioned named graph URI
      *
-     * @return The comparison
+     * @param namedGraphURI The named graph URI
+     * @param versionIndex  The current version index
+     * @return The versioned graph URI
      */
-    private static Comparator<MultipartFile> getRemoveAddFileComparator() {
-        return (o1, o2) -> {
-            if (o1.getOriginalFilename() == null || o2.getOriginalFilename() == null) {
-                throw new FileException("The filename is broken");
-            }
-
-            if (o1.getOriginalFilename().contains("remove") && o2.getOriginalFilename().contains("remove")) {
-                return 0;
-            } else if (o1.getOriginalFilename().contains("add") && o2.getOriginalFilename().contains("add")) {
-                return 0;
-            } else if (o1.getOriginalFilename().contains("remove") && o2.getOriginalFilename().contains("add")) {
-                return 1;
-            }
-            return -1;
-        };
+    private String generateVersionedNamedGraph(String namedGraphURI, Integer versionIndex) {
+        return namedGraphURI + "_" + versionIndex;
     }
 }

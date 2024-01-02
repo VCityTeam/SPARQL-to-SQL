@@ -1,98 +1,92 @@
 package fr.vcity.sparqltosql.repository;
 
+import fr.vcity.sparqltosql.dao.RDFVersionedQuad;
 import fr.vcity.sparqltosql.dto.RDFCompleteVersionedQuad;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
 public class RDFVersionedQuadComponent {
-    private final JdbcTemplate jdbcTemplate;
+    private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
 
-    public RDFVersionedQuadComponent(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public RDFVersionedQuadComponent(NamedParameterJdbcTemplate namedParameterJdbcTemplate) {
+        this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
     }
 
     public List<RDFCompleteVersionedQuad> findAll() {
-        return jdbcTemplate.query("""
-                        SELECT rls.name, rlp.name, rlo.name, ng.name, v.validity
+        return namedParameterJdbcTemplate.query("""
+                        SELECT rls.name, rlp.name, rlo.name, rlong.name, v.validity
                             FROM versioned_quad v LEFT JOIN resource_or_literal rls ON rls.id_resource_or_literal = v.id_subject
                             LEFT JOIN resource_or_literal rlp ON rlp.id_resource_or_literal = v.id_property
                             LEFT JOIN resource_or_literal rlo ON rlo.id_resource_or_literal = v.id_object
-                            LEFT JOIN named_graph ng ON ng.id_named_graph = v.id_named_graph
+                            LEFT JOIN resource_or_literal rlong ON rlong.id_resource_or_literal = v.id_named_graph
                                 """,
                 getRdfCompleteVersionedQuadRowMapper()
         );
     }
 
     public List<RDFCompleteVersionedQuad> findAllByValidity(String validity) {
-        // FIXME : SQL injection !
-        String query = String.format("""
-                SELECT rls.name, rlp.name, rlo.name, ng.name, v.validity
-                    FROM versioned_quad v LEFT JOIN resource_or_literal rls ON rls.id_resource_or_literal = v.id_subject
-                    LEFT JOIN resource_or_literal rlp ON rlp.id_resource_or_literal = v.id_property
-                    LEFT JOIN resource_or_literal rlo ON rlo.id_resource_or_literal = v.id_object
-                    LEFT JOIN named_graph ng ON ng.id_named_graph = v.id_named_graph
-                    WHERE v.validity = B'%s'
-                """, validity);
-        return jdbcTemplate.query(query,
+        return namedParameterJdbcTemplate.query("""
+                        SELECT rls.name, rlp.name, rlo.name, rlong.name, v.validity
+                            FROM versioned_quad v LEFT JOIN resource_or_literal rls ON rls.id_resource_or_literal = v.id_subject
+                            LEFT JOIN resource_or_literal rlp ON rlp.id_resource_or_literal = v.id_property
+                            LEFT JOIN resource_or_literal rlo ON rlo.id_resource_or_literal = v.id_object
+                            LEFT JOIN resource_or_literal rlong ON rlong.id_resource_or_literal = v.id_named_graph
+                            WHERE v.validity = CAST(:validity as bit varying)
+                        """, new MapSqlParameterSource()
+                        .addValue("validity", validity),
                 getRdfCompleteVersionedQuadRowMapper()
         );
     }
 
     public List<RDFCompleteVersionedQuad> findAllByVersion(Integer requestedVersion) {
-        // FIXME : SQL injection !
-        String query = String.format("""
-                SELECT rls.name, rlp.name, rlo.name, ng.name, v.validity
-                    FROM versioned_quad v LEFT JOIN resource_or_literal rls ON rls.id_resource_or_literal = v.id_subject
-                    LEFT JOIN resource_or_literal rlp ON rlp.id_resource_or_literal = v.id_property
-                    LEFT JOIN resource_or_literal rlo ON rlo.id_resource_or_literal = v.id_object
-                    LEFT JOIN named_graph ng ON ng.id_named_graph = v.id_named_graph
-                    WHERE get_bit(v.validity, %s) = 1
-                """, requestedVersion);
-        return jdbcTemplate.query(query,
+        return namedParameterJdbcTemplate.query("""
+                        SELECT rls.name, rlp.name, rlo.name, rlong.name, v.validity
+                            FROM versioned_quad v LEFT JOIN resource_or_literal rls ON rls.id_resource_or_literal = v.id_subject
+                            LEFT JOIN resource_or_literal rlp ON rlp.id_resource_or_literal = v.id_property
+                            LEFT JOIN resource_or_literal rlo ON rlo.id_resource_or_literal = v.id_object
+                            LEFT JOIN resource_or_literal rlong ON rlong.id_resource_or_literal = v.id_named_graph
+                            WHERE get_bit(v.validity, :requestedVersion) = 1
+                        """, new MapSqlParameterSource()
+                        .addValue("requestedVersion", requestedVersion),
                 getRdfCompleteVersionedQuadRowMapper()
         );
     }
 
-    public void saveAdd(
+    public RDFVersionedQuad save(
             Integer idSubject,
             Integer idProperty,
             Integer idObject,
             Integer idNamedGraph,
             Integer length
     ) {
-        // FIXME : SQL injection !
-        String query = String.format("""
-                INSERT INTO versioned_quad (id_subject, id_property, id_object, id_named_graph, validity)
-                VALUES (%s, %s, %s, %s, (
-                SELECT LPAD('', %s, '0')::bit varying || B'1'
-                ) )
-                ON CONFLICT ON CONSTRAINT versioned_quad_pkey
-                DO UPDATE SET validity = versioned_quad.validity || B'1';
-                """, idSubject, idProperty, idObject, idNamedGraph, length);
-        jdbcTemplate.execute(query);
-    }
-
-    public void saveRemove(
-            Integer idSubject,
-            Integer idProperty,
-            Integer idObject,
-            Integer idNamedGraph,
-            Integer length
-    ) {
-        // FIXME : SQL injection !
-        String query = String.format("""
-                INSERT INTO versioned_quad (id_subject, id_property, id_object, id_named_graph, validity)
-                VALUES (%s, %s, %s, %s, (
-                SELECT LPAD('', %s, '0')::bit varying || B'0'
-                ) )
-                ON CONFLICT ON CONSTRAINT versioned_quad_pkey
-                DO UPDATE SET validity = versioned_quad.validity || B'0';
-                """, idSubject, idProperty, idObject, idNamedGraph, length);
-        jdbcTemplate.execute(query);
+        return namedParameterJdbcTemplate.queryForObject("""
+                        INSERT INTO versioned_quad (id_subject, id_property, id_object, id_named_graph, validity)
+                        VALUES (:idSubject, :idProperty, :idObject, :idNamedGraph, (
+                        SELECT LPAD('', :length, '0')::bit varying || B'1'
+                        ) )
+                        ON CONFLICT ON CONSTRAINT versioned_quad_pkey
+                        DO UPDATE SET validity = versioned_quad.validity || B'1'
+                        RETURNING *;
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("idSubject", idSubject)
+                        .addValue("idProperty", idProperty)
+                        .addValue("idObject", idObject)
+                        .addValue("idNamedGraph", idNamedGraph)
+                        .addValue("length", length),
+                (rs, i) -> new RDFVersionedQuad(
+                        rs.getInt("id_subject"),
+                        rs.getInt("id_property"),
+                        rs.getInt("id_object"),
+                        rs.getInt("id_named_graph"),
+                        rs.getBytes("validity")
+                )
+        );
     }
 
     private static RowMapper<RDFCompleteVersionedQuad> getRdfCompleteVersionedQuadRowMapper() {

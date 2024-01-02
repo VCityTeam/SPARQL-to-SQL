@@ -1,16 +1,15 @@
 package fr.vcity.sparqltosql.services;
 
+import org.apache.jena.riot.RiotException;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 public interface IQuadImportService {
 
-    void importModelToAdd(List<MultipartFile> files);
-
-    void importModelToRemove(List<MultipartFile> files);
+    Integer importModel(MultipartFile file) throws RiotException;
 
     void resetDatabase();
 
-    void importModelToRemoveAndAdd(List<MultipartFile> files);
+    void importWorkspace(MultipartFile file) throws RiotException;
+
+    void removeWorkspace();
 }

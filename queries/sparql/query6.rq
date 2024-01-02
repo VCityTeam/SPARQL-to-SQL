@@ -1,0 +1,6 @@
+# Return the maximum height within all graphs
+# Data quality problem : MAX selects the string MAX
+SELECT (MAX(?height) AS ?maximum) WHERE {
+    ?subject a "http://www.w3.org/2002/07/owl#NamedIndividual" ;
+        <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Ontologies/CityGML/3.0/construction#Height.value> ?height .
+}

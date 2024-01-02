@@ -1,0 +1,15 @@
+# Return the number of Buildings within all version (= within all graph name -> = no filter on graph)
+# # CityGML 2.0 prefixes
+# # PREFIX bldg: <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Ontologies/CityGML/3.0/building#>
+# SELECT (COUNT(?object) AS ?number)
+# WHERE {
+#     ?graph a <https://github.com/VCityTeam/SPARQL-to-SQL/GraphType#Version> .
+#     GRAPH ?graph {
+#       ?object a bldg:Building .
+#     }
+# }
+
+SELECT (COUNT(?object) AS ?number)
+WHERE {
+    ?object a "https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Ontologies/CityGML/3.0/building#Building" .
+}

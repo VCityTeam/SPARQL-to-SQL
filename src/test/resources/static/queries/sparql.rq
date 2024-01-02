@@ -1,5 +1,0 @@
-SELECT (MAX(?height) AS ?maximum) WHERE {
-	GRAPH ?validity {
-  		<https://github.com/VCityTeam/UD-Graph/LYON_1ER_BATI_2015-1_bldg#BU_69381AB243_1> <http://www.opengis.net/citygml/building/2.0/building#AbstractBuilding.measuredHeight> ?height .
-  	}
-}

@@ -1,0 +1,6 @@
+# Query the graph store for all quads
+SELECT ?graph ?subject ?predicate ?object WHERE {
+    GRAPH ?graph {
+      ?subject ?predicate ?object .
+    }
+}

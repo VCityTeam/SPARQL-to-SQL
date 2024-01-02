@@ -1,17 +1,42 @@
-# Across multiple concurrent city versions, what is the maximum known height of a particular building?
-SELECT (MAX(?height) AS ?maximum) WHERE {
-	GRAPH ?validity {
-  		<https://github.com/VCityTeam/UD-Graph/LYON_1ER_BATI_2015-1_bldg#BU_69381AB243_1> <http://www.opengis.net/citygml/building/2.0/building#AbstractBuilding.measuredHeight> ?height .
-  	}
+PREFIX gtyp: <https://github.com/VCityTeam/SPARQL-to-SQL/GraphType#>
+PREFIX val: <https://github.com/VCityTeam/SPARQL-to-SQL/Validity#>
+
+SELECT ?graphName ?subject ?property ?object WHERE {
+	 ?graphName <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> gtyp:Version ;
+		 val:beginsAt "2023" ;
+		 val:endsAt "2024" .
+	 GRAPH ?graphName {
+		?subject ?property ?object .
+	}
+ }
+
+# Which city versions have a metro station accessible to people with disabilities?
+PREFIX transp: <http://www.opengis.net/citygml/transportation/2.0/transportation#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX gtyp: <https://github.com/VCityTeam/SPARQL-to-SQL/GraphType#>
+
+SELECT ?version WHERE {
+	 ?version rdf:type gtyp:Version .
+	 GRAPH ?version {
+		?subject rdf:type transp:Stop ;
+			transp:Stop.accessibility "true" .
+	}
 }
 
+# Which city versions have a metro station accessible to people with disabilities between the 2021-05-04 and the 2023-08-23?
+PREFIX transp: <http://www.opengis.net/citygml/transportation/2.0/transportation#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX gtyp: <https://github.com/VCityTeam/SPARQL-to-SQL/graph-type#>
+PREFIX val: <https://github.com/VCityTeam/SPARQL-to-SQL/Validity#>
 
-# TODO
-SELECT (MAX(?height) AS ?maximum) WHERE {
-	GRAPH ?validity {
-  		<https://github.com/VCityTeam/UD-Graph/LYON_1ER_BATI_2015-1_bldg#BU_69381AB243_1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.opengis.net/ont/geosparql#Geometry> ;
-            <http://www.opengis.net/citygml/building/2.0/building#AbstractBuilding.measuredHeight> ?height .
-  	}
+SELECT ?version WHERE {
+	?version rdf:type gtyp:Version ;
+		val:beginsAt "2021-05-04" ;
+		val:endsAt "2023-08-23" .
+	GRAPH ?version {
+		?subject rdf:type transp:Stop ;
+			transp:Stop.accessibility "true" .
+	}
 }
 
 # TODO
@@ -32,13 +57,3 @@ SELECT ?version ?subject ?property ?object WHERE {
   	}
   	FILTER(?date_commit < '2023-07-03 13:18')
 }
-
-
-SELECT ?graphName ?subject ?property ?object WHERE {
-	 ?graphName <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://github.com/VCityTeam/SPARQL-to-SQL/graph-type#GraphName> .
-	 ?graphName <https://github.com/VCityTeam/SPARQL-to-SQL/validity#beginsAt> "2023" .
-	 ?graphName <https://github.com/VCityTeam/SPARQL-to-SQL/validity#endsAt> "2024" .
-	 GRAPH ?graphName {
-		?subject ?property ?object .
-	}
- }

@@ -1,0 +1,14 @@
+# Common prefixes
+PREFIX owl:    <http://www.w3.org/2002/07/owl#>
+PREFIX cons: <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Ontologies/CityGML/3.0/construction#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# Return the maximum height within all graphs
+# Solving the previous data quality problem
+SELECT (MAX(xsd:float(?height)) AS ?maximum) WHERE {
+    ?v <https://github.com/VCityTeam/SPARQL-to-SQL#is-version-of> ?named_graph .
+    GRAPH ?v {
+      ?subject a owl:NamedIndividual ;
+              cons:Height.value ?height .
+    }
+}

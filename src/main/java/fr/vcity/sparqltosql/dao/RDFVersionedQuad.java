@@ -31,7 +31,4 @@ public class RDFVersionedQuad {
         this.idNamedGraph = idNamedGraph;
         this.validity = validity;
     }
-
-    public RDFVersionedQuad() {}
-
 }

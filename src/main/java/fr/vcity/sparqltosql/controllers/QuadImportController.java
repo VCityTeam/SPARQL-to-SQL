@@ -3,13 +3,15 @@ package fr.vcity.sparqltosql.controllers;
 import fr.vcity.sparqltosql.services.QuadImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.apache.jena.riot.RiotException;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 
 @RestController
@@ -27,46 +29,60 @@ public class QuadImportController {
             description = "Adds all quads as a new version and considered as valid"
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "The quads were added to a new version"),
-            @ApiResponse(responseCode = "500", description = "Invalid content")}
+            @ApiResponse(responseCode = "200", description = "The quads were added to a new version",
+                    content = {
+                            @Content(mediaType = "text/plain",
+                                    schema = @Schema(implementation = Integer.class)
+                            )}),
+            @ApiResponse(responseCode = "400", description = "Invalid content")}
     )
-    @PostMapping(value = "/add")
-    void importModelAdd(
-            @Parameter(description = "The file list containing all the triple/quads to import as valid in a new version", name = "files")
-            @RequestParam("files") List<MultipartFile> files
+    @PostMapping(value = {"/version"})
+    ResponseEntity<Integer> importModel(
+            @Parameter(description = "The file containing all the triple/quads to import as valid in a new version", name = "file")
+            @RequestParam("file") MultipartFile file
     ) {
-        quadImportService.importModelToAdd(files);
+        try {
+            Integer indexVersion = quadImportService.importModel(file);
+            return ResponseEntity.ok(indexVersion);
+        } catch (RiotException e) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(null);
+        }
     }
 
     @Operation(
-            summary = "Removes quads and creates a new version",
-            description = "Removes all quads as a new version and considered as invalid"
+            summary = "Adds triple and creates a new workspace",
+            description = "Adds all triple as a new workspace and considered as valid"
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "The quads were removed to a new version"),
-            @ApiResponse(responseCode = "500", description = "Invalid content")}
+            @ApiResponse(responseCode = "200", description = "The triple were added to a new workspace"),
+            @ApiResponse(responseCode = "400", description = "Invalid content")}
     )
-    @PostMapping(value = "/remove")
-    void importModelRemove(
-            @Parameter(description = "The file list containing all the triple/quads to import as invalid in a new version", name = "files")
-            @RequestParam("files") List<MultipartFile> files
+    @PostMapping(value = {"/workspace"})
+    ResponseEntity<Void> importWorkspace(
+            @Parameter(description = "The file containing all the triple to import as valid in a new workspace", name = "file")
+            @RequestParam("file") MultipartFile file
     ) {
-        quadImportService.importModelToRemove(files);
+        try {
+            quadImportService.importWorkspace(file);
+            return ResponseEntity.ok().build();
+        } catch (RiotException e) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(null);
+        }
     }
 
     @Operation(
-            summary = "Adds, removes quads and creates a new version",
-            description = "Removes all quads inside the 'to-remove' file then adds all quads inside the 'to-add' file as a new version"
+            summary = "Remove the current workspace",
+            description = "Make the current workspace as null"
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "The quads were treated as a new version"),
-            @ApiResponse(responseCode = "500", description = "Invalid content")}
-    )
-    @PostMapping(value = "/remove-add")
-    void submit(
-            @Parameter(description = "The file list containing all the triple/quads to import as valid when filename contains 'add' and invalid when filename contains 'remove' in a new version", name = "files")
-            @RequestParam("files") List<MultipartFile> files
-    ) {
-        quadImportService.importModelToRemoveAndAdd(files);
+            @ApiResponse(responseCode = "200", description = "The workspace have been cleaned")
+    })
+    @DeleteMapping(value = {"/workspace"})
+    void removeWorkspace() {
+        quadImportService.removeWorkspace();
     }
 }

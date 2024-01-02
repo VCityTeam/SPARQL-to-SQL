@@ -1,16 +1,19 @@
 package fr.vcity.sparqltosql.utils;
 
 
-
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.sparql.algebra.OpVisitor;
 import org.apache.jena.sparql.algebra.op.*;
 
+@Getter
 @Slf4j
 public class SPARQLtoSQLVisitor implements OpVisitor {
 
-    private static final String VALIDITY_PATTERN = "/Validity#";
+    private static final String GRAPH_NAME_PATTERN = "/GraphName#";
     private static final String VERSION_PATTERN = "/Version#";
+
+    private String generatedSQL = "";
 
     /**
      * gets the list of triple from the Basic Graph Pattern
@@ -19,12 +22,11 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpBGP opBGP) {
-        log.debug("Visiting OpBGP size: {}", opBGP.getPattern().size());
+        log.info("Visiting OpBGP size: {}", opBGP.getPattern().size());
         opBGP
                 .getPattern()
                 .getList()
-                .forEach(triple -> log.debug("Triple: {}", triple.toString()));
-        log.debug("-----------------");
+                .forEach(triple -> log.info("    Triple: {}", triple.toString()));
     }
 
     /**
@@ -32,8 +34,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpQuadPattern quadPattern) {
-        log.debug("Visiting OpQuadPattern");
-        log.debug("-----------------");
+        log.info("Visiting OpQuadPattern");
     }
 
     /**
@@ -41,8 +42,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpQuadBlock quadBlock) {
-        log.debug("Visiting OpQuadBlock");
-        log.debug("-----------------");
+        log.info("Visiting OpQuadBlock");
     }
 
     /**
@@ -50,8 +50,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpTriple opTriple) {
-        log.debug("Visiting OpTriple");
-        log.debug("-----------------");
+        log.info("Visiting OpTriple");
     }
 
     /**
@@ -59,8 +58,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpQuad opQuad) {
-        log.debug("Visiting OpQuad");
-        log.debug("-----------------");
+        log.info("Visiting OpQuad");
     }
 
     /**
@@ -68,8 +66,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpPath opPath) {
-        log.debug("Visiting OpPath");
-        log.debug("-----------------");
+        log.info("Visiting OpPath");
     }
 
     /**
@@ -77,8 +74,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpTable opTable) {
-        log.debug("Visiting OpTable");
-        log.debug("-----------------");
+        log.info("Visiting OpTable");
     }
 
     /**
@@ -86,8 +82,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpNull opNull) {
-        log.debug("Visiting OpNull");
-        log.debug("-----------------");
+        log.info("Visiting OpNull");
     }
 
     /**
@@ -95,8 +90,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpProcedure opProc) {
-        log.debug("Visiting OpProcedure");
-        log.debug("-----------------");
+        log.info("Visiting OpProcedure");
     }
 
     /**
@@ -104,8 +98,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpPropFunc opPropFunc) {
-        log.debug("Visiting OpPropFunc");
-        log.debug("-----------------");
+        log.info("Visiting OpPropFunc");
     }
 
     /**
@@ -113,12 +106,10 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpFilter opFilter) {
-        // FIXME: Visit and evaluate expression?
-        log.debug("Visiting OpFilter Expr size: {}", opFilter.getExprs().size());
+        log.info("Visiting OpFilter Expr size: {}", opFilter.getExprs().size());
         opFilter
                 .getExprs()
-                .forEach(expr -> log.debug("Expr: {}", expr.toString()));
-        log.debug("-----------------");
+                .forEach(expr -> log.info("Expr: {}", expr.toString()));
     }
 
     /**
@@ -129,13 +120,13 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
     @Override
     public void visit(OpGraph opGraph) {
         String nodeString = opGraph.getNode().toString();
-        log.debug("Visiting OpGraph: {}", nodeString);
+        log.info("Visiting OpGraph: {}", nodeString);
 
-        if (nodeString.contains(VALIDITY_PATTERN) || nodeString.contains(VERSION_PATTERN)) {
-            log.debug("V: {}", getAnchorValueFromURI(nodeString));
+        if (nodeString.contains(VERSION_PATTERN)) {
+            log.info("V: {}", getAnchorValueFromURI(nodeString));
+        } else if (nodeString.contains(GRAPH_NAME_PATTERN)) {
+            log.info("NG: {}", getAnchorValueFromURI(nodeString));
         }
-
-        log.debug("-----------------");
     }
 
     /**
@@ -143,8 +134,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpService opService) {
-        log.debug("Visiting OpService");
-        log.debug("-----------------");
+        log.info("Visiting OpService");
     }
 
     /**
@@ -152,8 +142,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpDatasetNames dsNames) {
-        log.debug("Visiting OpDatasetNames");
-        log.debug("-----------------");
+        log.info("Visiting OpDatasetNames");
     }
 
     /**
@@ -161,8 +150,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpLabel opLabel) {
-        log.debug("Visiting OpLabel");
-        log.debug("-----------------");
+        log.info("Visiting OpLabel");
     }
 
     /**
@@ -170,8 +158,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpAssign opAssign) {
-        log.debug("Visiting OpAssign");
-        log.debug("-----------------");
+        log.info("Visiting OpAssign");
     }
 
     /**
@@ -179,8 +166,8 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpExtend opExtend) {
-        log.debug("Visiting OpExtend");
-        log.debug("-----------------");
+
+        log.info("Visiting OpExtend");
     }
 
     /**
@@ -188,13 +175,9 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpJoin opJoin) {
-        // FIXME: Visit and evaluate expression?
-        log.debug("Visiting OpJoin");
-        log.debug("opJoin Left: {}", opJoin.getLeft().toString());
-        log.debug(opJoin.getLeft().getName());
-        log.debug("opJoin Right: {}", opJoin.getRight().toString());
-        log.debug(opJoin.getRight().getName());
-        log.debug("-----------------");
+        log.info("Visiting OpJoin");
+        log.info("    opJoin Left: {}", opJoin.getLeft().getName());
+        log.info("    opJoin Right: {}", opJoin.getRight().getName());
     }
 
     /**
@@ -202,8 +185,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpLeftJoin opLeftJoin) {
-        log.debug("Visiting OpLeftJoin");
-        log.debug("-----------------");
+        log.info("Visiting OpLeftJoin");
     }
 
     /**
@@ -211,8 +193,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpUnion opUnion) {
-        log.debug("Visiting OpUnion");
-        log.debug("-----------------");
+        log.info("Visiting OpUnion");
     }
 
     /**
@@ -220,8 +201,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpDiff opDiff) {
-        log.debug("Visiting OpDiff");
-        log.debug("-----------------");
+        log.info("Visiting OpDiff");
     }
 
     /**
@@ -229,8 +209,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpMinus opMinus) {
-        log.debug("Visiting OpMinus");
-        log.debug("-----------------");
+        log.info("Visiting OpMinus");
     }
 
     /**
@@ -238,8 +217,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpLateral opLateral) {
-        log.debug("Visiting OpLateral");
-        log.debug("-----------------");
+        log.info("Visiting OpLateral");
     }
 
     /**
@@ -247,8 +225,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpConditional opCondition) {
-        log.debug("Visiting OpConditional");
-        log.debug("-----------------");
+        log.info("Visiting OpConditional");
     }
 
     /**
@@ -256,8 +233,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpSequence opSequence) {
-        log.debug("Visiting OpSequence");
-        log.debug("-----------------");
+        log.info("Visiting OpSequence");
     }
 
     /**
@@ -265,8 +241,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpDisjunction opDisjunction) {
-        log.debug("Visiting OpDisjunction");
-        log.debug("-----------------");
+        log.info("Visiting OpDisjunction");
     }
 
     /**
@@ -274,8 +249,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpList opList) {
-        log.debug("Visiting OpList");
-        log.debug("-----------------");
+        log.info("Visiting OpList");
     }
 
     /**
@@ -283,8 +257,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpOrder opOrder) {
-        log.debug("Visiting OpOrder");
-        log.debug("-----------------");
+        log.info("Visiting OpOrder");
     }
 
     /**
@@ -294,11 +267,10 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpProject opProject) {
-        log.debug("Visiting OpProject size: {}", opProject.getVars().size());
+        log.info("Visiting OpProject size: {}", opProject.getVars().size());
         opProject
                 .getVars()
-                .forEach(var -> log.debug("Var: {}", var.getVarName()));
-        log.debug("-----------------");
+                .forEach(variable -> log.info("    Var: {}", variable.getVarName()));
     }
 
     /**
@@ -306,8 +278,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpReduced opReduced) {
-        log.debug("Visiting OpReduced");
-        log.debug("-----------------");
+        log.info("Visiting OpReduced");
     }
 
     /**
@@ -315,8 +286,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpDistinct opDistinct) {
-        log.debug("Visiting OpDistinct");
-        log.debug("-----------------");
+        log.info("Visiting OpDistinct");
     }
 
     /**
@@ -324,8 +294,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpSlice opSlice) {
-        log.debug("Visiting OpSlice");
-        log.debug("-----------------");
+        log.info("Visiting OpSlice");
     }
 
     /**
@@ -335,24 +304,22 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpGroup opGroup) {
-        // FIXME: Visit and evaluate expression?
-        log.debug("Visiting OpGroup var size: {}", opGroup.getGroupVars().size());
+        log.info("Visiting OpGroup var size: {}", opGroup.getGroupVars().size());
         opGroup
                 .getGroupVars()
                 .getVars()
-                .forEach(var -> log.debug("Var: {}", var.getVarName()));
-        log.debug("Visiting OpGroup aggregator size: {}", opGroup.getAggregators().size());
+                .forEach(variable -> log.info("    Var: {}", variable.getVarName()));
+        log.info("Visiting OpGroup aggregator size: {}", opGroup.getAggregators().size());
         opGroup
                 .getAggregators()
                 .forEach(exprAggregator -> {
-                    log.debug("Aggregator: {} ", exprAggregator.getAggregator().getName());
-                    log.debug("Associated aggregator expression size: {}", exprAggregator.getAggregator().getExprList().size());
+                    log.info("    Aggregator: {} ", exprAggregator.getAggregator().getName());
+                    log.info("    Associated aggregator expression size: {}", exprAggregator.getAggregator().getExprList().size());
                     exprAggregator
                             .getAggregator()
                             .getExprList()
-                            .forEach(expr -> log.debug("Agg {} Expression: {}", exprAggregator.getAggregator().getName(), expr.getVarName()));
+                            .forEach(expr -> log.info("        Agg {} Expression: {}", exprAggregator.getAggregator().getName(), expr.getVarName()));
                 });
-        log.debug("-----------------");
     }
 
     /**
@@ -360,8 +327,7 @@ public class SPARQLtoSQLVisitor implements OpVisitor {
      */
     @Override
     public void visit(OpTopN opTopN) {
-        log.debug("Visiting OpTopN");
-        log.debug("-----------------");
+        log.info("Visiting OpTopN");
     }
 
     private static String getAnchorValueFromURI(String uri) {

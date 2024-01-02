@@ -1,0 +1,22 @@
+# Common prefixes
+PREFIX owl:    <http://www.w3.org/2002/07/owl#>
+
+# CityGML 2.0 prefixes
+PREFIX core: <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Ontologies/CityGML/3.0/core#>
+
+# Versioning prefixes
+PREFIX vers: <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Ontologies/CityGML/3.0/versioning#>
+
+# Dataset prefixes
+PREFIX vt:    <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Datasets/GratteCiel_Workspace_2009_2018/3.0/GratteCiel#>
+
+# Return the number of features within a version
+SELECT (COUNT(?object) AS ?number)
+WHERE {
+      ?subject a core:CityModel ;
+        ?predicate ?object ;
+        a ?subjectType .
+      vt:version_2012 vers:Version.versionMember ?object .
+
+      FILTER(?subjectType != owl:NamedIndividual)
+}

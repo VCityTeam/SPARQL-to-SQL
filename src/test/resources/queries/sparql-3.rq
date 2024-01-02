@@ -1,0 +1,7 @@
+# Query the graph store for all quads with a given subject and a join on the subject (predicate might be equal to predicate2 and object might be equal to object2)
+SELECT ?graph ?predicate ?object WHERE {
+    GRAPH ?graph {
+      <https://dataset-dl.liris.cnrs.fr/rdf-owl-urban-data-ontologies/Datasets/GratteCiel_Workspace_2009_2018/3.0/GratteCiel#VILLEURBANNE_00067_5> ?predicate ?object ;
+        ?predicate2 ?object2 .
+    }
+}
