@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Created by jpugetgil on 18/05/17.
+ * Created by jpugetgil.
  * Singleton for the hibernate session
  */
 public class HibernateSessionSingleton {

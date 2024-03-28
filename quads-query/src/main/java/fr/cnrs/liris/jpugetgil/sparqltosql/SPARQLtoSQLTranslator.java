@@ -17,7 +17,6 @@ import org.hibernate.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,13 +43,13 @@ public class SPARQLtoSQLTranslator {
      *
      * @return the SQL query
      */
-    public ResultSet translate(Query query) {
+    public String translate(Query query) {
         Op op = Algebra.compile(query);
 
         SQLQuery qu = buildSPARQLContext(op);
         log.info(qu.getSql());
 
-        return null;
+        return qu.getSql();
     }
 
     private SQLQuery buildSPARQLContext(Op op) {
@@ -61,9 +60,9 @@ public class SPARQLtoSQLTranslator {
 
         return switch (op) {
             case OpJoin opJoin -> {
-                buildSPARQLContext(opJoin.getLeft(), context);
-                buildSPARQLContext(opJoin.getRight(), context);
-                yield null;
+                SQLQuery leftSQLQuery = buildSPARQLContext(opJoin.getLeft(), context);
+                SQLQuery rightSQLQuery = buildSPARQLContext(opJoin.getRight(), context);
+                yield buildSQLQueryJoin(leftSQLQuery, rightSQLQuery);
             }
             case OpLeftJoin opLeftJoin -> {
                 buildSPARQLContext(opLeftJoin.getLeft(), context);
@@ -166,6 +165,13 @@ public class SPARQLtoSQLTranslator {
         };
     }
 
+    /**
+     * Build the SQL query in an URI graph context
+     *
+     * @param opBGP   the BGP operator of the SPARQL query
+     * @param context the context of the SQL query
+     * @return the built SQL query
+     */
     private SQLQuery buildContextBGPWithGraphURI(OpBGP opBGP, SQLContext context) {
         String select = generateSelect(opBGP, context);
         String tables = generateFromTables(opBGP, false);
@@ -273,30 +279,16 @@ public class SPARQLtoSQLTranslator {
                     sqlQuery.getContext().graph().getName();
 
             return new SQLQuery(
-                    select + from + "\n JOIN versioned_named_graph vng" + position + " ON " +
-                            sqlClauseBuilder.and(
-                                    new EqualToOperator()
-                                            .buildComparisonOperatorSQL(
-                                                    "sq" + position + ".ng$" + sqlQuery.getContext().graph().getName(),
-                                                    "vng" + position + ".id_named_graph"
-                                            )
-                            ).and(
-                                    new EqualToOperator()
-                                            .buildComparisonOperatorSQL(
-                                                    "get_bit(sq" + position + ".bs$" + sqlQuery.getContext().graph().getName() +
-                                                            ", vng" + position + ".index_version)",
-                                                    "1"
-                                            )
-                            ).build().clause,
+                    select + from,
                     sqlQuery.getContext()
             );
         } else {
-            String select = "SELECT sq" + position + ".ng$graph, sq" + position +".bs$graph," + // FIXME: Hardcoded
+            String select = "SELECT sq" + position + ".ng$graph, sq" + position + ".bs$graph," + // FIXME: Hardcoded
                     sqlQuery.getContext().varOccurrences().keySet()
-                        .stream()
-                        .filter(node -> node instanceof Node_Variable)
-                        .map(node -> "sq" + position + ".v$" + node.getName())
-                        .collect(Collectors.joining(", "));
+                            .stream()
+                            .filter(node -> node instanceof Node_Variable)
+                            .map(node -> "sq" + position + ".v$" + node.getName())
+                            .collect(Collectors.joining(", "));
 
             VersionedNamedGraph versionedNamedGraph = getAssociatedVNG(sqlQuery.getContext().graph().getURI());
 
@@ -330,6 +322,28 @@ public class SPARQLtoSQLTranslator {
                     sqlQuery.getContext()
             );
         }
+    }
+
+
+
+    /**
+     * Build the SQL query with the join
+     *
+     * @param leftSQLQuery  the left SQL query
+     * @param rightSQLQuery the right SQL query
+     * @return the SQL query with the joined terms
+     */
+    private SQLQuery buildSQLQueryJoin(SQLQuery leftSQLQuery, SQLQuery rightSQLQuery) {
+        List<Node> commonNodes = new ArrayList<>();
+        leftSQLQuery.getContext().varOccurrences().keySet().stream().filter(node -> node instanceof Node_Variable).forEach(node -> {
+            if (rightSQLQuery.getContext().varOccurrences().containsKey(node)) {
+                commonNodes.add(node);
+            }
+        });
+
+        // TODO : Handle JOINs
+        String sql = "SELECT * FROM (" + leftSQLQuery.getSql() + ") left1, (" + rightSQLQuery.getSql() + ") right1";
+        return new SQLQuery(sql, null);
     }
 
 
@@ -568,7 +582,7 @@ public class SPARQLtoSQLTranslator {
         Transaction tx = session.beginTransaction();
         VersionedNamedGraph versionedNamedGraph = session.createQuery(
                         "from VersionedNamedGraph vng join ResourceOrLiteral rl " +
-                        "on vng.idVersionedNamedGraph = rl.idResourceOrLiteral where rl.name = :uri",
+                                "on vng.idVersionedNamedGraph = rl.idResourceOrLiteral where rl.name = :uri",
                         VersionedNamedGraph.class
                 )
                 .setParameter("uri", uri)

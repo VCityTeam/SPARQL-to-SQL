@@ -1,6 +1,7 @@
 package fr.cnrs.liris.jpugetgil.sparqltosql;
 
 import fr.cnrs.liris.jpugetgil.sparqltosql.hibernate.HibernateSessionSingleton;
+import fr.cnrs.liris.jpugetgil.sparqltosql.hibernate.JdbcConnection;
 import org.apache.jena.atlas.json.JsonArray;
 import org.apache.jena.atlas.json.JsonObject;
 import org.apache.jena.graph.Node;
@@ -37,9 +38,12 @@ public class VersioningQueryExecution implements QueryExecution {
 
     private final SessionFactory sessionFactory;
 
+    private final JdbcConnection jdbcConnection;
+
     public VersioningQueryExecution(Query query) {
         this.query = query;
         this.sessionFactory = HibernateSessionSingleton.getInstance().getSessionFactory();
+        this.jdbcConnection = JdbcConnection.getInstance();
     }
 
     @Override
@@ -75,7 +79,9 @@ public class VersioningQueryExecution implements QueryExecution {
     @Override
     public org.apache.jena.query.ResultSet execSelect() {
         SPARQLtoSQLTranslator translator = new SPARQLtoSQLTranslator(sessionFactory);
-        try (ResultSet rs = translator.translate(query)) {
+        String sqlQuery = translator.translate(query);
+
+        try (ResultSet rs = jdbcConnection.executeSQL(sqlQuery)) {
             List<Var> vars = new ArrayList<>();
             List<Binding> bindings = new ArrayList<>();
 
@@ -87,6 +93,7 @@ public class VersioningQueryExecution implements QueryExecution {
                     Var variable = Var.alloc(columnName);
                     Node variableValue;
                     if (rs.getString(columnName) != null) {
+                        // FIXME : Handle resource or literal type
                         variableValue = NodeFactory.createLiteral(rs.getString(columnName));
                         if (!vars.contains(variable)) {
                             vars.add(variable);
